@@ -1,40 +1,37 @@
-import requests
-import csv
-from datetime import datetime
-import os
+name: Porur Weather Logger
 
-LATITUDE = 13.0356
-LONGITUDE = 80.1582
-filename = "porur_cloud_weather_log.csv"
+on:
+  schedule:
+    # Runs every minute (Note: GitHub Actions cron can have a slight queue delay)
+    - cron: '* * * * *'
+  workflow_dispatch:
 
-url = f"https://api.open-meteo.com/v1/forecast?latitude={LATITUDE}&longitude={LONGITUDE}&current=temperature_2m,direct_radiation,diffuse_radiation"
+jobs:
+  log-weather:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
 
-try:
-    response = requests.get(url, timeout=10)
-    print(f"API Response Code: {response.status_code}")
-    
-    if response.status_code == 200:
-        data = response.json()
-        current = data.get("current", {})
-        
-        temp_c = current.get("temperature_2m", 0)
-        direct = current.get("direct_radiation", 0)
-        diffuse = current.get("diffuse_radiation", 0)
-        irradiance = (direct or 0) + (diffuse or 0)
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-        file_exists = os.path.isfile(filename)
-        
-        with open(filename, mode='a', newline='') as f:
-            writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow(["Timestamp", "Ambient_Temp_C", "Solar_Irradiance_W_m2"])
-            writer.writerow([timestamp, temp_c, irradiance])
-            
-        print(f"Successfully logged at {timestamp}: Temp={temp_c}°C, Irradiance={irradiance}W/m²")
-    else:
-        print(f"API Error: {response.text}")
-        exit(1)
-except Exception as e:
-    print(f"Exception occurred: {e}")
-    exit(1)
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run weather logging script
+        run: python log_weather.py
+
+      - name: Commit and push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add porur_cloud_weather_log.csv
+          git commit -m "Auto-logged weather data [skip ci]" || echo "No changes to commit"
+          git push origin main
